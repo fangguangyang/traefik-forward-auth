@@ -17,7 +17,7 @@ I have merged several pull requests that have not (yet?) been merged upstream:
 I have also updated all the dependencies, and switched to building with Go 1.20.
 The Dockerfile has been switched from Alpine to using the official Go container for building the binary and a [distroless](https://github.com/GoogleContainerTools/distroless) image for runtime.
 
-I wrote [a blog post](https://jordemort.dev/blog/single-sign-on-with-mastodon/) about how I use this.
+I wrote [a blog post](https://fangguangyang.dev/blog/single-sign-on-with-mastodon/) about how I use this.
 Note that I only use the Generic OAuth provider.
 I haven't tried using the other providers, but all the tests still pass.
 
@@ -61,7 +61,7 @@ It seems to be a better bet to match against the `X-Forwarded-For` header.
 
 ## Releases
 
-Releases of this fork are published to the [GitHub Container Registry](https://github.com/jordemort/traefik-forward-auth/pkgs/container/traefik-forward-auth).
+Releases of this fork are published to the [GitHub Container Registry](https://github.com/fangguangyang/traefik-forward-auth/pkgs/container/traefik-forward-auth).
 
 I currently only publish a `latest` tag.
 
@@ -88,7 +88,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
 
   traefik-forward-auth:
-    image: ghcr.io/jordemort/traefik-forward-auth:latest
+    image: ghcr.io/fangguangyang/traefik-forward-auth:latest
     environment:
       - PROVIDERS_GOOGLE_CLIENT_ID=your-client-id
       - PROVIDERS_GOOGLE_CLIENT_SECRET=your-client-secret
