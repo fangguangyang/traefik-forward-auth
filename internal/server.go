@@ -8,6 +8,7 @@ import (
 
 	"github.com/fangguangyang/traefik-forward-auth/internal/provider"
 	"github.com/sirupsen/logrus"
+	"github.com/traefik/traefik/v3/pkg/middlewares/requestdecorator"
 	mux "github.com/traefik/traefik/v3/pkg/muxer/http"
 )
 
@@ -37,20 +38,21 @@ func (s *Server) buildRoutes() {
 	}
 
 	// Let's build a router
+	var prio = 1
 	for name, rule := range config.Rules {
 		matchRule := rule.formattedRule()
 		if rule.Action == "allow" {
-			s.muxer.AddRoute(matchRule, "", 1, s.AllowHandler(name))
+			s.muxer.AddRoute(matchRule, "", prio, s.AllowHandler(name))
 		} else {
-			s.muxer.AddRoute(matchRule, "", 1, s.AuthHandler(rule.Provider, name))
+			s.muxer.AddRoute(matchRule, "", prio, s.AuthHandler(rule.Provider, name))
 		}
 	}
 
 	// Add callback handler
-	s.muxer.AddRoute(fmt.Sprintf("Path(`%s`)", config.Path), "", 1, s.AuthCallbackHandler())
+	s.muxer.AddRoute(fmt.Sprintf("Path(`%s`)", config.Path), "", prio+1, s.AuthCallbackHandler())
 
 	// Add logout handler
-	s.muxer.AddRoute(fmt.Sprintf("Path(`%s/logout`)", config.Path), "", 1, s.LogoutHandler())
+	s.muxer.AddRoute(fmt.Sprintf("Path(`%s/logout`)", config.Path), "", prio+2, s.LogoutHandler())
 
 	// Add a default handler
 	if config.DefaultAction == "allow" {
@@ -72,6 +74,7 @@ func (s *Server) RootHandler(w http.ResponseWriter, r *http.Request) {
 		r.URL, _ = url.Parse(r.Header.Get("X-Forwarded-Uri"))
 	}
 
+	requestdecorator.New(nil).ServeHTTP(w, r, s.muxer.ServeHTTP)
 	// Pass to mux
 	s.muxer.ServeHTTP(w, r)
 }
@@ -121,7 +124,7 @@ func (s *Server) AuthHandler(providerName, rule string) http.HandlerFunc {
 				s.authRedirect(logger, w, r, p)
 			} else {
 				logger.WithField("error", err).Warn("Invalid cookie")
-				http.Error(w, "Not authorized", 401)
+				http.Error(w, "Not authorized", http.StatusUnauthorized)
 			}
 			return
 		}
@@ -130,7 +133,7 @@ func (s *Server) AuthHandler(providerName, rule string) http.HandlerFunc {
 		valid := ValidateUser(user, rule)
 		if !valid {
 			logger.WithField("user", escapeNewlines(user)).Warn("Invalid user")
-			http.Error(w, "User is not authorized", 401)
+			http.Error(w, "User is not authorized", http.StatusUnauthorized)
 			return
 		}
 
@@ -153,7 +156,7 @@ func (s *Server) AuthCallbackHandler() http.HandlerFunc {
 			logger.WithFields(logrus.Fields{
 				"error": err,
 			}).Warn("Error validating state")
-			http.Error(w, "Not authorized", 401)
+			http.Error(w, "Not authorized", http.StatusUnauthorized)
 			return
 		}
 
@@ -161,7 +164,7 @@ func (s *Server) AuthCallbackHandler() http.HandlerFunc {
 		c, err := FindCSRFCookie(r, state)
 		if err != nil {
 			logger.Info("Missing csrf cookie")
-			http.Error(w, "Not authorized", 401)
+			http.Error(w, "Not authorized", http.StatusUnauthorized)
 			return
 		}
 
@@ -172,7 +175,7 @@ func (s *Server) AuthCallbackHandler() http.HandlerFunc {
 				"error":       err,
 				"csrf_cookie": c,
 			}).Warn("Error validating csrf cookie")
-			http.Error(w, "Not authorized", 401)
+			http.Error(w, "Not authorized", http.StatusUnauthorized)
 			return
 		}
 
@@ -184,7 +187,7 @@ func (s *Server) AuthCallbackHandler() http.HandlerFunc {
 				"csrf_cookie": c,
 				"provider":    providerName,
 			}).Warn("Invalid provider in csrf cookie")
-			http.Error(w, "Not authorized", 401)
+			http.Error(w, "Not authorized", http.StatusUnauthorized)
 			return
 		}
 
@@ -197,7 +200,7 @@ func (s *Server) AuthCallbackHandler() http.HandlerFunc {
 			logger.WithFields(logrus.Fields{
 				"receieved_redirect": redirect,
 			}).Warnf("Invalid redirect in CSRF. %v", err)
-			http.Error(w, "Not authorized", 401)
+			http.Error(w, "Not authorized", http.StatusUnauthorized)
 			return
 		}
 
@@ -205,7 +208,7 @@ func (s *Server) AuthCallbackHandler() http.HandlerFunc {
 		token, err := p.ExchangeCode(redirectUri(r), r.URL.Query().Get("code"))
 		if err != nil {
 			logger.WithField("error", err).Error("Code exchange failed with provider")
-			http.Error(w, "Service unavailable", 503)
+			http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
 			return
 		}
 
@@ -213,7 +216,7 @@ func (s *Server) AuthCallbackHandler() http.HandlerFunc {
 		user, err := p.GetUser(token, config.UserPath)
 		if err != nil {
 			logger.WithField("error", err).Error("Error getting user")
-			http.Error(w, "Service unavailable", 503)
+			http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
 			return
 		}
 
@@ -242,7 +245,7 @@ func (s *Server) LogoutHandler() http.HandlerFunc {
 		if config.LogoutRedirect != "" {
 			http.Redirect(w, r, config.LogoutRedirect, http.StatusTemporaryRedirect)
 		} else {
-			http.Error(w, "You have been logged out", 401)
+			http.Error(w, "You have been logged out", http.StatusUnauthorized)
 		}
 	}
 }
@@ -252,7 +255,7 @@ func (s *Server) authRedirect(logger *logrus.Entry, w http.ResponseWriter, r *ht
 	err, nonce := Nonce()
 	if err != nil {
 		logger.WithField("error", err).Error("Error generating nonce")
-		http.Error(w, "Service unavailable", 503)
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
