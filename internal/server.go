@@ -1,13 +1,14 @@
 package tfa
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/fangguangyang/traefik-forward-auth/internal/provider"
 	"github.com/sirupsen/logrus"
-	mux "github.com/traefik/traefik/v2/pkg/muxer/http"
+	mux "github.com/traefik/traefik/v3/pkg/muxer/http"
 )
 
 // Server contains router and handler methods
@@ -39,23 +40,23 @@ func (s *Server) buildRoutes() {
 	for name, rule := range config.Rules {
 		matchRule := rule.formattedRule()
 		if rule.Action == "allow" {
-			s.muxer.AddRoute(matchRule, 1, s.AllowHandler(name))
+			s.muxer.AddRoute(matchRule, "", 1, s.AllowHandler(name))
 		} else {
-			s.muxer.AddRoute(matchRule, 1, s.AuthHandler(rule.Provider, name))
+			s.muxer.AddRoute(matchRule, "", 1, s.AuthHandler(rule.Provider, name))
 		}
 	}
 
 	// Add callback handler
-	s.muxer.Handle(config.Path, s.AuthCallbackHandler())
+	s.muxer.AddRoute(fmt.Sprintf("Path(`%s`)", config.Path), "", 1, s.AuthCallbackHandler())
 
 	// Add logout handler
-	s.muxer.Handle(config.Path+"/logout", s.LogoutHandler())
+	s.muxer.AddRoute(fmt.Sprintf("Path(`%s/logout`)", config.Path), "", 1, s.LogoutHandler())
 
 	// Add a default handler
 	if config.DefaultAction == "allow" {
-		s.muxer.NewRoute().Handler(s.AllowHandler("default"))
+		s.muxer.SetDefaultHandler(s.AllowHandler("default"))
 	} else {
-		s.muxer.NewRoute().Handler(s.AuthHandler(config.DefaultProvider, "default"))
+		s.muxer.SetDefaultHandler(s.AuthHandler(config.DefaultProvider, "default"))
 	}
 }
 

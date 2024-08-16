@@ -14,6 +14,7 @@ import (
 	"github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/traefik/traefik/v3/pkg/middlewares/requestdecorator"
 	"golang.org/x/oauth2"
 )
 
@@ -387,11 +388,11 @@ func TestServerRouteHeaders(t *testing.T) {
 	config.Rules = map[string]*Rule{
 		"1": {
 			Action: "allow",
-			Rule:   "Headers(`X-Test`, `test123`)",
+			Rule:   "Header(`X-Test`, `test123`)",
 		},
 		"2": {
 			Action: "allow",
-			Rule:   "HeadersRegexp(`X-Test`, `test(456|789)`)",
+			Rule:   "HeaderRegexp(`X-Test`, `test(456|789)`)",
 		},
 	}
 
@@ -424,7 +425,7 @@ func TestServerRouteHost(t *testing.T) {
 		},
 		"2": {
 			Action: "allow",
-			Rule:   "HostRegexp(`sub{num:[0-9]}.example.com`)",
+			Rule:   "HostRegexp(`sub[0-9].example.com`)",
 		},
 	}
 
@@ -435,12 +436,12 @@ func TestServerRouteHost(t *testing.T) {
 
 	// Should allow matching request
 	req = newHTTPRequest("GET", "https://api.example.com/")
-	res, _ = doHttpRequest(req, nil)
+	res, _ = doHttpRequest(req, nil, "HostRule")
 	assert.Equal(200, res.StatusCode, "request matching allow rule should be allowed")
 
 	// Should allow matching request
 	req = newHTTPRequest("GET", "https://sub8.example.com/")
-	res, _ = doHttpRequest(req, nil)
+	res, _ = doHttpRequest(req, nil, "HostRule")
 	assert.Equal(200, res.StatusCode, "request matching allow rule should be allowed")
 }
 
@@ -505,7 +506,7 @@ func TestServerRouteQuery(t *testing.T) {
 	config.Rules = map[string]*Rule{
 		"1": {
 			Action: "allow",
-			Rule:   "Query(`q=test123`)",
+			Rule:   "Query(`q`, `test123`)",
 		},
 	}
 
@@ -563,7 +564,11 @@ func NewFailingOAuthServer(t *testing.T) (*httptest.Server, *url.URL) {
 	return server, serverURL
 }
 
-func doHttpRequest(r *http.Request, c *http.Cookie) (*http.Response, string) {
+// doHttpRequest ...
+// r http.Request
+// c http.Cookie
+// options options[0] HostRule, ...
+func doHttpRequest(r *http.Request, c *http.Cookie, options ...string) (*http.Response, string) {
 	w := httptest.NewRecorder()
 
 	// Set cookies on recorder
@@ -576,7 +581,13 @@ func doHttpRequest(r *http.Request, c *http.Cookie) (*http.Response, string) {
 		r.Header.Add("Cookie", c)
 	}
 
-	NewServer().RootHandler(w, r)
+	// RequestDecorator is necessary for the Host matcher
+	s := NewServer()
+	if len(options) > 0 && options[0] == "HostRule" {
+		reqHost := requestdecorator.New(nil)
+		reqHost.ServeHTTP(w, r, s.muxer.ServeHTTP)
+	}
+	s.RootHandler(w, r)
 
 	res := w.Result()
 	body, _ := ioutil.ReadAll(res.Body)
