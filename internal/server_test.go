@@ -14,7 +14,6 @@ import (
 	"github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/traefik/traefik/v3/pkg/middlewares/requestdecorator"
 	"golang.org/x/oauth2"
 )
 
@@ -581,12 +580,7 @@ func doHttpRequest(r *http.Request, c *http.Cookie) (*http.Response, string) {
 		r.Header.Add("Cookie", c)
 	}
 
-	// RequestDecorator is necessary for the Host matcher
 	s := NewServer()
-
-	reqHost := requestdecorator.New(nil)
-	reqHost.ServeHTTP(w, r, s.muxer.ServeHTTP)
-
 	s.RootHandler(w, r)
 
 	res := w.Result()

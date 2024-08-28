@@ -74,9 +74,8 @@ func (s *Server) RootHandler(w http.ResponseWriter, r *http.Request) {
 		r.URL, _ = url.Parse(r.Header.Get("X-Forwarded-Uri"))
 	}
 
+	// RequestDecorator is necessary for the Host matcher
 	requestdecorator.New(nil).ServeHTTP(w, r, s.muxer.ServeHTTP)
-	// Pass to mux
-	s.muxer.ServeHTTP(w, r)
 }
 
 // AllowHandler Allows requests
